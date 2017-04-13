@@ -1,0 +1,6 @@
+.idea/
+chromescript/
+*~*
+fbp.iml
+*.html
+*.css
