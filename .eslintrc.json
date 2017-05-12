@@ -1,0 +1,28 @@
+{
+  "extends": "google",
+  "parserOptions": {
+    "ecmaVersion": 6,
+    "sourceType": "script",
+    "ecmaFeatures": {
+    }
+  },
+  "rules": {
+    "quotes": [
+      "error",
+      "double"
+    ],
+    "require-jsdoc": ["error", {
+      "require": {
+        "FunctionDeclaration": true,
+        "MethodDefinition": true,
+        "ClassDeclaration": true
+      }
+    }],
+    "valid-jsdoc": "error",
+    "camelcase": "off"
+  },
+  "env": {
+    "greasemonkey": true,
+    "browser": true
+  }
+}
