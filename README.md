@@ -6,47 +6,45 @@ Allows a user to select BikePortland comments they wish to view based on how man
 
 ## Version 1.0
 
-This userscript is hosted at https://greasyfork.org/scripts/5717-metafilter-filter-by-favorites
+This userscript is hosted at https://greasyfork.org/en/scripts/19975-bikeportlandfilterbyrecommended
 
-It is synced with this github location: https://github.com/jonathanpdx/MetaFilterFilterByFavorites
+It is synced with this github location: https://github.com/jonathanpdx/BikePortlandFilterByRecommended
 
 ## Usage
 
-To use this script, install via Greasemonkey. If you have Greasemonkey installed, downloading the script via your
+To use this script, install via Greasemonkey/Tampermonkey. If you have either *monkey installed, downloading the script via your
 browser should prompt for install.
 
 ## Suggestions
 
-If you have any suggestions as to how you'd like this script to differently, please don't hesitate to ask!
+If you have any suggestions as to how you'd like this script to behave differently, please don't hesitate to ask!
 
 ### Features
 
-#### Comments/Favorites graph
+#### Comments/Recommendations chart
 
-At the top of any page which has more than one comment, a graph should appear showing how many comments have been
-made with a minimum threshold of favorites. Clicking on any bar on the graph will filter the display of comments that
-have at least that many favorites.
+At the top of the comments section, a chart should appear showing the Most Popular Comments. Clicking on any bar on the chart will filter the display of comments that
+have at least that many recommendations.
 
-![Comment/Favorite Graph](https://raw.githubusercontent.com/jonathanpdx/MetaFilterFilterByFavorites/master/comment-favorite-graph.png "Current selection remains highlighted.")
+![Comments/Recommendations Graph](https://raw.githubusercontent.com/jonathanpdx/BikePortlandFilterByRecommended/master/comment-chart.png "Current selection remains highlighted.")
 
-#### Show weighted favorite bar next to each comment.
+#### Show weighted recommendation bar next to each comment.
 
-Each comment has a bar next to it, with the width growing in proportion to the number of times its been favorited.
+Each comment has a bar next to it, with the width growing in proportion to the number of times it has been recommended.
 
-![Comments with favorite bar](https://raw.githubusercontent.com/jonathanpdx/MetaFilterFilterByFavorites/master/favorite-highlight-per-comment.png "The more comments the wider the bar.")
+![Comments with recommendation bar](https://raw.githubusercontent.com/jonathanpdx/BikePortlandFilterByRecommended/master/comments-with-bars.jpg "The more comments the wider the bar.")
 
-#### Show: All / X and above / More options
+#### Show: Top X recommendations | All
 
-Three additional links will appear next to each comment's favorite count allowing you to filter comments in-place,
-with the "More options" link providing a convenience link to return to the top of the post and view the graph.
+Two additional links will appear next to each comment's recommendation count allowing you to filter comments in-place.
 
-![Adjust favorite level per comment](https://raw.githubusercontent.com/jonathanpdx/MetaFilterFilterByFavorites/master/comment.png "Show all / x and above / More options.")
+![Adjust recommendation level per comment](https://raw.githubusercontent.com/jonathanpdx/BikePortlandFilterByRecommended/master/comment.jpg "Show: Top X recommendations | All")
 
 #### Hotkey(s)
 
-Currently the only hotkey configured is [ALT + g] which is the equivalent of clicking "Show all".
+[ALT + g] -> "Show all"
+[ALT + c] -> "Scroll to chart"
 
 ## Special Thanks
 
-Special thanks to Jordan Reiter and Jimmy Woods for their previous work on MetaFilter favorite user scripts,
-on which this work is heavily based.
+Special thanks to Jordan Reiter and Jimmy Woods for their previous work on MetaFilter favorite user scripts, on which this work is heavily based.

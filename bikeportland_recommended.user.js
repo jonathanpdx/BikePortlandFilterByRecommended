@@ -31,11 +31,19 @@
 
 /*
  This script borrows from Jimmy Woods' Metafilter favorite posts filter script
- http://userscripts.org/scripts/show/75332
+ Dead link: http://userscripts.org/scripts/show/75332
 
  Also from Jordan Reiter's Metafilter MultiFavorited Multiwidth - November
  Experiment
- http://userscripts.org/scripts/show/61012
+ Dead link: http://userscripts.org/scripts/show/61012
+
+ Uses eslint (eslint:recommended and google) for coding style with minimal
+ overrides.
+
+ Uses underscore in variables that represent html-related entities.
+
+ Version 1.6
+ - Heavily rewritten, updated to ECMAScript 6
 
  Version 1.4/1.5
  - Updated to work with https
@@ -62,7 +70,17 @@
  */
 
 
-let foreach = function(fn) {
+/**
+ * Allows us to use the for(var x in y) construct on array-like objects but
+ * has two advantages:
+ *
+ * 1. Does not need to be guarded with <code>hasOwnProperty</code> if
+ *   statements.
+ * 2. Faster {@link https://jsperf.com/fastest-array-loops-in-javascript/24}
+ * @param {Function} fn The function to run each loop, receiving value and
+ * zero-indexed position.
+ */
+let arrayLikeForeach = function(fn) {
   // eslint-disable-next-line no-invalid-this
   let arrayLike = this;
   let len = arrayLike.length;
@@ -72,50 +90,39 @@ let foreach = function(fn) {
   }
 };
 
+// eslint-disable-next-line no-extend-native
 Object.defineProperty(Array.prototype, "customForEach", {
   enumerable: false,
-  value: foreach,
+  value: arrayLikeForeach,
 });
 
+// eslint-disable-next-line no-extend-native
 Object.defineProperty(HTMLCollection.prototype, "customForEach", {
   enumerable: false,
-  value: foreach,
+  value: arrayLikeForeach,
 });
 
-Object.defineProperty(Map.prototype, "getOrElse", {
-  enumerable: false,
-  value: function(key, value) {
-    return this.has(key) ? this.get(key) : value;
-  },
-});
-
-
-// Enum-like variable to help with logging via Logger
-// Not serializable. If we want to do that, consider this slight modification
-// https://stijndewitt.com/2014/01/26/enums-in-javascript/
-let LogLevelEnum = {
-  DEBUG: {value: 0, name: "Debug"},
-  INFO: {value: 1, name: "Info"},
-  WARN: {value: 2, name: "Warn"},
-  ERROR: {value: 3, name: "Error"},
-};
-
+/**
+ * ----------------------------------
+ * Config
+ * ----------------------------------
+ * Script CONSTANTS and state variables
+ */
 let Config = {
   selected_row: null, // Reference to the currently selected div in the chart
-  chart_bg_color: "#CCC",   // Background color for the chart rows
-  chart_selected_color: "#F2A175",     // Selected color for the chart row.
-  hover_color: "#F2A175",     // Hover color for the chart row.
-  favorite_color: "#ff7617",     // Main color for favorites.
   posts: [],        // Stores info about each post
   numRecsCountMap: new Map([[0, 0]]),
   maxFavorites: 0,   // Highest favorite count so far.
-  logLevel: LogLevelEnum.DEBUG,   // What level should we log at?
-  doLog: true,  // Should we log messages?
-  row_prefix: "summary_id_", // Prefix ID for each row in chart
-  chart_id: "chart_id", // ID for the chart
-  chart_link_id: "chart_link_id", // ID for link to chart
-};
-
+  CHART_BG_COLOR: "#CCC",   // Background color for the chart rows
+  CHART_SELECTED_COLOR: "#F2A175",     // Selected color for the chart row
+  HOVER_COLOR: "#F2A175",     // Hover color for the chart row.
+  FAVORITE_COLOR: "#FF7617",     // Main color for favorites.
+  IS_DEVELOPMENT: false,  // Are we in development mode?
+  ROW_PREFIX: "summary_id_", // Prefix ID for each row in chart
+  CHART_ID: "CHART_ID", // ID for the chart
+  CHART_LINK_ID: "CHART_LINK_ID", // ID for link to chart,
+  LOG_LEVEL_NAME: "DEBUG",   // What level should we log at?
+  };
 
 /**
  * ----------------------------------
@@ -125,20 +132,45 @@ let Config = {
  */
 let Logger = {
 
-  log: function(message, logLevelEnum) {
-    logLevelEnum = logLevelEnum || LogLevelEnum.INFO;
+  /*
+   Enum-like variable to help with logging
+   Not serializable. If we want to do that, consider this slight modification
+   https://stijndewitt.com/2014/01/26/enums-in-javascript/
+   */
+  LogLevelEnum: {
+    DEBUG: {value: 0, name: "Debug"},
+    INFO: {value: 1, name: "Info"},
+    WARN: {value: 2, name: "Warn"},
+    ERROR: {value: 3, name: "Error"},
+    getByName: function(name) {
+      return this.hasOwnProperty(name) ? this[name] : this.DEBUG;
+    },
+  },
 
-    if (Config.doLog && logLevelEnum.value >= Config.logLevel.value) {
-      console.log(logLevelEnum.name + ": " + message);
+  log: function(message, logLevelEnum) {
+    logLevelEnum = logLevelEnum || this.LogLevelEnum.INFO;
+
+    if (Config.IS_DEVELOPMENT && logLevelEnum.value >=
+      this.LogLevelEnum.getByName(Config.LOG_LEVEL_NAME).value) {
+      switch (logLevelEnum) {
+        case this.LogLevelEnum.ERROR:
+          console.error(logLevelEnum.name + ": " + message);
+          break;
+        case this.LogLevelEnum.WARN:
+          console.warn(logLevelEnum.name + ": " + message);
+          break;
+        default:
+          console.log(logLevelEnum.name + ": " + message);
+      }
     }
   }, debug: function(message) {
-    Logger.log(message, LogLevelEnum.DEBUG);
+    Logger.log(message, this.LogLevelEnum.DEBUG);
   }, info: function(message) {
-    Logger.log(message, LogLevelEnum.INFO);
+    Logger.log(message, this.LogLevelEnum.INFO);
   }, warn: function(message) {
-    Logger.log(message, LogLevelEnum.WARN);
+    Logger.log(message, this.LogLevelEnum.WARN);
   }, error: function(message) {
-    Logger.log(message, LogLevelEnum.ERROR);
+    Logger.log(message, this.LogLevelEnum.ERROR);
   },
 };
 
@@ -146,7 +178,7 @@ let Logger = {
  * ----------------------------------
  * Util
  * ----------------------------------
- * Various utility functions
+ * Various utility functions, not specific to this particular script.
  */
 let Util = {
   /**
@@ -155,8 +187,8 @@ let Util = {
    * @param {string} tag Name of the tag element to search on (e.g., "span",
    * "div", "ul", etc.)
    * @param {string} className Name of the css class to search for
-   * @param {Node} from DOM element to search under. If not specified, document
-   * is used
+   * @param {HTMLElement} [from] DOM element to search under. If not specified,
+   * document is used
    * @return {Array} Found nodes (if any)
    */
   getNodesFromTagWithClass: function(tag, className, from) {
@@ -170,8 +202,8 @@ let Util = {
    * Returns an array of DOM elements that match a given XPath expression.
    *
    * @param {string} path Xpath expression to search for
-   * @param {Node} from DOM element to search under. If not specified, document
-   * is used
+   * @param {HTMLElement} from DOM element to search under. If not specified,
+   * document is used
    * @return {Array} Found nodes (if any)
    */
   getNodes: function(path, from) {
@@ -188,7 +220,7 @@ let Util = {
 
   /**
    * Deletes a DOM element
-   * @param {Node} element DOM element to remove
+   * @param {HTMLElement} element DOM element to remove
    * @return {Node} element the removed element
    */
   removeElement: function(element) {
@@ -197,7 +229,7 @@ let Util = {
 
   /**
    * Returns y position of given DOM element
-   * @param {Node} element DOM element to find position
+   * @param {HTMLElement} element DOM element to find position
    * @return {number} y position of given DOM element
    */
   findPos: function(element) {
@@ -212,7 +244,7 @@ let Util = {
 
   /**
    * Tests whether DOM element has a given class
-   * @param {Node} element The DOM element to test
+   * @param {HTMLElement} element The DOM element to test
    * @param {string} classname The name of the class to check
    * @return {boolean} true if class name is found, false otherwise.
    */
@@ -224,7 +256,7 @@ let Util = {
    * Gets or creates a DOM element with a particular id
    * @param {string} tagName The type of DOM element (e.g., "span", "div", etc.)
    * @param {string} id The id of the element to get/create
-   * @return {Node} The element, either created or found.
+   * @return {HTMLElement} The element, either created or found.
    */
   getOrCreateElementWithId: function(tagName, id) {
     let element = document.getElementById(id);
@@ -238,10 +270,16 @@ let Util = {
   },
 
   /**
-   *
-   * @param className
-   * @param node
-   * @returns {Array}
+   * Returns an array containing the HTML nodes that have the specified class
+   * name. Private method, should only be called by
+   * {@link getElementsByClassName} in the case that it is not supported
+   * natively.
+   * @param {HTMLElement} node The HTML node to search under
+   * @param {String} className The CSS class name to search for
+   * @return {Array} An array containing the HTML nodes that have the
+   * specified class name.
+   * @see {@link getElementsByClassName}
+   * @private
    */
   legacyGetElementsByClassName: function(node, className) {
       if (node === null) {
@@ -270,10 +308,12 @@ let Util = {
     },
 
   /**
-   * Returns
-   * @param node
-   * @param classname
-   * @returns {*}
+   * Returns an array-like object containing the HTML nodes that have the
+   * specified class name.
+   * @param {Element} node The HTML node to search under
+   * @param {String} classname The CSS class name to search for
+   * @return {*} An array-like object containing the HTML nodes that have the
+   * specified class name.
    */
   getElementsByClassName: function(node, classname) {
     if (node.getElementsByClassName) { // use native implementation if available
@@ -286,17 +326,38 @@ let Util = {
 
 };
 
+/**
+ * Highlight the show text for those comments who have been recommended count
+ * many times.
+ * @param {Number} count The number of recommendations that are currently being
+ * highlighted.
+ */
+let highlightClick = function(count) {
+  Util.getNodesFromTagWithClass("span", "click_count").forEach(function(val) {
+    let recommendedCount = val.dataset.count;
 
-let simulateClickShow = function(count) {
-  document.getElementById(Config.row_prefix + count).click();
-  highlightClick(count);
+    if (count === recommendedCount) {
+      val.classList.remove("is_not_selected");
+      val.classList.add("is_selected");
+    } else {
+      val.classList.add("is_not_selected");
+      val.classList.remove("is_selected");
+    }
+  });
 };
 
-/*
- * Event handler for when user clicks on a row
+let simulateChartRowClick = function(count) {
+  document.getElementById(Config.ROW_PREFIX + count).click();
+};
+
+/**
+ * Event handler for when user clicks on a chart row. Highlights the row, hides
+ * all comments below the threshold, and highlights the show text for comments
+ * that have the same count threshold as clicked.
+ * @param {Event} event The click event associated with the chart row.
  */
-let filterPosts = function(event) {
-  Logger.debug("Start filterPosts");
+let onChartRowClick = function(event) {
+  Logger.debug("Start onChartRowClick");
 
   // Get the clicked element
   let row_div = event.target;
@@ -306,87 +367,70 @@ let filterPosts = function(event) {
     row_div = row_div.parentNode;
   }
 
+  event.preventDefault();
+  event.stopPropagation();
+
   // Determine its ID and extract the number from it.
-  let filter_count = row_div.dataset.count;
-  Logger.debug("filter_count is: " + filter_count);
+  let filterCount = row_div.dataset.count;
+  Logger.debug("filterCount is: " + filterCount);
 
   // Hide/unhide all posts that don't match the chosen fav count.
   Config.posts.customForEach(function(post, j) {
     let isShowing = (post.div.style.display !== "none");
-    let doShow = (post.recommendedCount >= filter_count);
+    let doShow = (post.recommendedCount >= filterCount);
     if (doShow !== isShowing) {
       post.div.style.display = (doShow ? "" : "none");
     }
   });
 
-
   // Reset the color of the previous row to be clicked on.
   if (Config.selected_row !== null) {
-    Config.selected_row.style.background = Config.chart_bg_color;
+    Config.selected_row.style.background = Config.CHART_BG_COLOR;
   }
   // Set the color of the row we just clicked on
-  row_div.style.background = Config.chart_selected_color;
+  row_div.style.background = Config.CHART_SELECTED_COLOR;
   Config.selected_row = row_div;
 
-  highlightClick(filter_count);
+  highlightClick(filterCount);
 
-  Logger.debug("End filterPosts");
+  Logger.debug("End onChartRowClick");
 };
 
-// ---------------------------
 
-
-// a function that loads jQuery and calls a callback function when jQuery has
-// finished loading
-let addJQuery = function(callback) {
-  let script = document.createElement("script");
-  script.setAttribute("src", "http://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js");
-  script.addEventListener("load", function() {
-    let script = document.createElement("script");
-    script.textContent = "(" + callback.toString() + ")();";
-    document.body.appendChild(script);
-  }, false);
-  document.body.appendChild(script);
-};
-
-function highlightClick(count) {
-  Util.getNodesFromTagWithClass("span", "click_count").forEach(function(val) {
-    let cur_count = val.dataset.count;
-
-    if (count === cur_count) {
-      val.classList.remove("is_not_selected");
-      val.classList.add("is_selected");
-    } else {
-      val.classList.add("is_not_selected");
-      val.classList.remove("is_selected");
-    }
-  });
-}
-
-let captureShowClick = function(e) {
-  let click_target = e.target;
-  while (!(/SPAN/i).test(click_target.tagName)) {
-    click_target = click_target.parentNode;
+/**
+ * Event handler that filters comments when a user clicks "Show: Top x
+ * recommendations" or "Show: all". Scrolls the page so the comment appears
+ * in the same place regardless of filtering.
+ * @param {Event} event The click event that is being responded to.
+ */
+let onShowClick = function(event) {
+  let clicked = event.target;
+  while (!(/SPAN/i).test(clicked.tagName)) {
+    clicked = clicked.parentNode;
   }
-  let count = click_target.dataset.count;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  let count = clicked.dataset.count;
 
   Logger.debug("Count is: " + count);
-  Logger.debug("click_target is: " + click_target);
-  let prevPos = Util.findPos(click_target);
-  Logger.debug("click_target pos before: " + prevPos);
+  Logger.debug("clicked is: " + clicked);
+  let prevPos = Util.findPos(clicked);
+  Logger.debug("clicked pos before: " + prevPos);
 
   let diff = prevPos - window.pageYOffset;
 
-  simulateClickShow(count);
+  simulateChartRowClick(count);
 
-  let newPos = Util.findPos(click_target);
-  Logger.debug("click_target pos after: " + newPos);
+  let newPos = Util.findPos(clicked);
+  Logger.debug("clicked pos after: " + newPos);
 
   window.scrollTo(0, newPos - diff);
-  return false;
 };
 
 // renaming function to comply with eslint "new-cap" rule
+// eslint-disable-next-line camelcase
 let gm_addStyle = GM_addStyle;
 
 let addCustomStyles = function() {
@@ -399,7 +443,7 @@ let addCustomStyles = function() {
 
   gm_addStyle("#comments { margin-bottom: 1em; }");
 
-  gm_addStyle("#" + Config.chart_id + ",.chart_link, .chart_title, .chart, " +
+  gm_addStyle("#" + Config.CHART_ID + ",.chart_link, .chart_title, .chart, " +
     ".heading, .chart_right,.chart_row, .comments, .favs, .all_favs, " +
     ".click_count, .show {" +
     "font-weight: lighter !important;" +
@@ -408,20 +452,20 @@ let addCustomStyles = function() {
 
   gm_addStyle(".chart_link {" +
     "font: 16px !important;" +
-    "color: " + Config.favorite_color + " !important;" +
+    "color: " + Config.FAVORITE_COLOR + " !important;" +
     "}");
 
   gm_addStyle("span.is_not_selected a {" +
     "font-weight: lighter !important;" +
-    "color: " + Config.hover_color + " !important;" +
+    "color: " + Config.HOVER_COLOR + " !important;" +
     "}");
 
   gm_addStyle("span.is_selected a {" +
     "font-weight: normal !important;" +
-    "color: " + Config.favorite_color + " !important;" +
+    "color: " + Config.FAVORITE_COLOR + " !important;" +
     "}");
 
-  gm_addStyle("#" + Config.chart_id + " {" +
+  gm_addStyle("#" + Config.CHART_ID + " {" +
     "white-space: nowrap !important;" +
     "padding: 3px 0 !important;" +
     "}");
@@ -430,11 +474,11 @@ let addCustomStyles = function() {
     "padding: 3px 0 !important;" +
     "margin: 0px 4px !important;" +
     "font-size: 200% !important;" +
-    "color: " + Config.favorite_color + " !important;" +
+    "color: " + Config.FAVORITE_COLOR + " !important;" +
     "}");
 
   gm_addStyle(".chart {" +
-    "background-color: " + Config.chart_bg_color + " !important;" +
+    "background-color: " + Config.CHART_BG_COLOR + " !important;" +
     "width: 90% !important;" +
     "font: 14px !important;" +
     "margin: 0px 4px !important;" +
@@ -457,7 +501,7 @@ let addCustomStyles = function() {
     "}");
 
   gm_addStyle(".favs {" +
-    "background-color: " + Config.favorite_color + " !important;" +
+    "background-color: " + Config.FAVORITE_COLOR + " !important;" +
     "color: white !important;" +
     "}");
 
@@ -472,7 +516,7 @@ let addCustomStyles = function() {
     "}");
 
   gm_addStyle(".chart_row:hover {" +
-    "background-color: " + Config.hover_color + " !important;" +
+    "background-color: " + Config.HOVER_COLOR + " !important;" +
     "}");
 
   gm_addStyle(".comment_highlight {" +
@@ -495,25 +539,30 @@ let processPosts = function() {
   Config.numRecsCountMap.clear();
 
   // Get posts and compile them into array
-  let id_re = /^div\-comment\-(\d+)$/;
+  let idRe = /^div\-comment\-(\d+)$/;
   let comment_divs = Util.getNodesFromTagWithClass("div", "comment-body", null);
 
   comment_divs.forEach(function(comment_div) {
     let comment_div_id = comment_div.id;
 
     // we ignore the reply comment div, which doesn't have an id
-    if (comment_div_id === undefined || !id_re.test(comment_div_id)) {
-      Logger.debug("Invalid ID found for comment: " + comment_div_id);
+    if (comment_div_id === undefined || !idRe.test(comment_div_id)) {
+      // aside for the "respond" div we would be surprised to find a non-
+      // conforming div id
+      if ("respond" !== comment_div_id) {
+        Logger.warn("Unexpected ID found for comment: " + comment_div_id);
+      }
       return;
     }
 
-    let id_num = id_re.exec(comment_div_id)[1];
+    let id_num = idRe.exec(comment_div_id)[1];
     let recommended_span = document.getElementById("karma-" + id_num + "-up");
     let recommended_text = recommended_span.textContent;
     let recommendedCount = parseInt(recommended_text);
 
-    let numComments = Config.numRecsCountMap.getOrElse(recommendedCount, 0) + 1;
-    Config.numRecsCountMap.set(recommendedCount, numComments);
+    let numComments = Config.numRecsCountMap.get(recommendedCount);
+    numComments = undefined === numComments ? 0 : numComments;
+    Config.numRecsCountMap.set(recommendedCount, numComments + 1);
 
     Config.maxFavorites = Math.max(recommendedCount, Config.maxFavorites);
     Config.posts.push({
@@ -524,8 +573,12 @@ let processPosts = function() {
   });
 };
 
-let testChange = function(event) {
-  let element = document.getElementById("mytestspantarget");
+/**
+ * Simple event handler for when a user clicks on the
+ * @param {Event} event The click event of the span surrounding the tester text.
+ */
+let onTesterClick = function(event) {
+  let element = document.getElementById("modify_tester_target");
   element.innerHTML = parseInt(element.innerHTML) + 1;
 };
 
@@ -534,12 +587,12 @@ let modifyPosts = function() {
     // we only highlight 3 and above
     if (post.recommendedCount > 2) {
       let size = (Math.round(post.recommendedCount / 2) + 1);
-      let border_left = size + "px solid " + Config.favorite_color;
+      let border_left = size + "px solid " + Config.FAVORITE_COLOR;
       post.div.style.setProperty("border-left", border_left, "important");
 
       // add the highlight class if it does not already exist
       if (!Util.elementHasClass(post.div, "comment_highlight")) {
-        post.div.class += " comment_highlight";
+        post.div.className += " comment_highlight";
       }
     }
 
@@ -584,10 +637,6 @@ let modifyPosts = function() {
   });
 };
 
-/**
- * Generates the chart at the top of the page
- * @return void
- */
 let drawChart = function() {
   Logger.debug("Creating chart for total counts: " + Config.numRecsCountMap);
 
@@ -612,18 +661,18 @@ let drawChart = function() {
 
     let recommendedWidthSize = (Math.round((key / Config.maxFavorites) * 80));
 
-    let comment_count_label = key === 0 ? "All " : "Top ";
+    let commentCountLabel = key === 0 ? "All " : "Top ";
     let num_recs_style = key === 0 ? "all_favs" : "favs";
-    data_rows_html += "<div id='" + Config.row_prefix + key +
+    data_rows_html += "<div id='" + Config.ROW_PREFIX + key +
       "' class='chart_row clearfix' data-count='" + key + "'>" +
-      "<div class='comments'>" + comment_count_label + commentSum + "</div>" +
+      "<div class='comments'>" + commentCountLabel + commentSum + "</div>" +
       "<div class='" + num_recs_style + "' style='width: " +
       recommendedWidthSize + "%;'>" + key + "</div>" +
       "</div>";
   });
 
   // Insert table into page
-  chart_div.innerHTML = "<div id='" + Config.chart_id + "' class='clearfix'>" +
+  chart_div.innerHTML = "<div id='" + Config.CHART_ID + "' class='clearfix'>" +
     "<span class='chart_title'>Most Popular Comments</span>" +
     "</div>" +
     data_rows_html;
@@ -635,7 +684,7 @@ let drawChart = function() {
 let addEventListeners = function() {
   Util.getNodesFromTagWithClass("div", "chart_row").customForEach(
     function(val, i) {
-    val.addEventListener("click", filterPosts, false);
+    val.addEventListener("click", onChartRowClick, false);
   });
 };
 
@@ -648,7 +697,7 @@ let initializeEventListeners = function() {
       !e.ctrlKey &&
       e.altKey &&
       !e.metaKey) {
-      simulateClickShow(0);
+      simulateChartRowClick(0);
     }
 
     // pressed alt+c
@@ -657,30 +706,27 @@ let initializeEventListeners = function() {
       !e.ctrlKey &&
       e.altKey &&
       !e.metaKey) {
-      document.getElementById(Config.chart_link_id).click();
+      document.getElementById(Config.CHART_LINK_ID).click();
     }
   }, false);
 
   Util.getElementsByClassName(document, "click_count").customForEach(
     function(val, i) {
-    val.addEventListener("click", captureShowClick, false);
+    val.addEventListener("click", onShowClick, false);
   });
-
-  let element = document.getElementById("mytestspan");
-  element.addEventListener("click", testChange, false);
 
   // create an observer instance
   let observer = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
-      Logger.info("Mutation is: " + mutation);
-
       processPosts();
       modifyPosts();
       drawChart();
       addEventListeners();
 
-      let key = Config.selected_row.dataset.count
-        ;
+      let key = Config.selected_row.dataset.count;
+
+      // if we no longer have a row for the previously selected count, find
+      // the row for the next lower count.
       if (!Config.numRecsCountMap.has(key)) {
         let keys = Array.from(Config.numRecsCountMap.keys());
 
@@ -697,11 +743,10 @@ let initializeEventListeners = function() {
         });
       }
 
-      simulateClickShow(key);
+      simulateChartRowClick(key);
     });
   });
 
-  // configuration of the observer:
   let config = {attributes: false, childList: true, characterData: false};
 
   Config.posts.customForEach(function(post, j) {
@@ -709,8 +754,11 @@ let initializeEventListeners = function() {
     observer.observe(document.getElementById(karma_id), config);
   });
 
-  // pass in the target node, as well as the observer options
-  observer.observe(document.getElementById("mytestspantarget"), config);
+  if (Config.IS_DEVELOPMENT) {
+    let element = document.getElementById("modify_tester");
+    element.addEventListener("click", onTesterClick, false);
+    observer.observe(document.getElementById("modify_tester_target"), config);
+  }
 };
 
 let init = function() {
@@ -727,10 +775,14 @@ let init = function() {
   let entrytext_div = Util.getNodesFromTagWithClass("div", "entrytext")[0];
   let chart_link_div = document.createElement("div");
   chart_link_div.className = "chart_link";
-  chart_link_div.innerHTML = "<a href='#" + Config.chart_id + "' id='" +
-    Config.chart_link_id + "'>&gt;&nbsp;&gt;&nbsp;Comment filter</a>";
-  chart_link_div.innerHTML += "<span id='mytestspan'>Click: </span>" +
-    "<span id='mytestspantarget'>0</span>";
+  chart_link_div.innerHTML = "<a href='#" + Config.CHART_ID + "' id='" +
+    Config.CHART_LINK_ID + "'>&gt;&nbsp;&gt;&nbsp;Comment filter</a>";
+
+  if (Config.IS_DEVELOPMENT) {
+    chart_link_div.innerHTML += "&nbsp;<span id='modify_tester'>" +
+      "Number of times clicked: </span>" +
+      "<span id='modify_tester_target'>0</span>";
+  }
 
   entrytext_div.parentNode.insertBefore(chart_link_div, entrytext_div);
 
@@ -741,7 +793,7 @@ let init = function() {
   initializeEventListeners();
   addEventListeners();
 
-  simulateClickShow(0);
+  simulateChartRowClick(0);
   Logger.info("Ending init() for BikePortlandFilterByRecommended script.");
 };
 
