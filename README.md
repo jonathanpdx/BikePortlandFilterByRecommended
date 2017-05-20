@@ -4,7 +4,7 @@
 
 Allows a user to select BikePortland comments they wish to view based on how many times it has been recommended.
 
-## Version 1.0
+## Version 1.6
 
 This userscript is hosted at https://greasyfork.org/en/scripts/19975-bikeportlandfilterbyrecommended
 
