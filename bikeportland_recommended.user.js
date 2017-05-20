@@ -574,12 +574,13 @@ let processPosts = function() {
 };
 
 /**
- * Simple event handler for when a user clicks on the
+ * Simple event handler for when a user clicks on the label for the mutation
+ * observer field
  * @param {Event} event The click event of the span surrounding the tester text.
  */
 let onTesterClick = function(event) {
   let element = document.getElementById("modify_tester_target");
-  element.innerHTML = parseInt(element.innerHTML) + 1;
+  element.innerHTML = String(parseInt(element.innerHTML) + 1);
 };
 
 let modifyPosts = function() {
